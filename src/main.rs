@@ -1,4 +1,6 @@
+use std::collections::VecDeque;
 use std::net::SocketAddr;
+use dashmap::DashMap;
 use http_body_util::Full;
 use http_body_util::Empty;
 use http_body_util::combinators::BoxBody;
@@ -11,12 +13,13 @@ use hyper::Method;
 use hyper::StatusCode;
 use tokio::net::TcpListener;
 use std::collections::HashMap;
+use uuid::Uuid;
+use std::time::{SystemTime};
 
 #[tokio::main]
 async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
     let listener = TcpListener::bind(addr).await.unwrap();
-    
     loop {
         let (stream, _) = listener.accept().await.unwrap();
         tokio::spawn(async move {
@@ -29,7 +32,7 @@ async fn main() {
     }
 }
 
-const REQUIRED_PARAMS: &[&str; 2] = &["response_type", "client_id"];
+const REQUIRED_PARAMS: &[&str; 3] = &["response_type", "client_id", "scope"];
 
 async fn auth_process(
     req: Request<hyper::body::Incoming>
@@ -60,13 +63,6 @@ async fn auth_process(
     }
 }
 
-enum AuthorizeParams {
-    ResponseType(String),
-    ClientId(String),
-    RedirectUri(String), //TODO: Maybe Make URI Type...
-    Scope(String),
-    State(String) //security measure to prevent CSRF/Replay
-}
 
 fn empty() -> BoxBody<Bytes, hyper::Error> {
     Empty::<Bytes>::new()
@@ -78,4 +74,20 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
     Full::new(chunk.into())
         .map_err(|never| match never {})
         .boxed()
+}
+
+struct IdentityStore {
+    session_queue: VecDeque<Session>,
+    session_store: DashMap<String, SessionRecord>,
+    
+}
+
+struct Session {
+    session_id: Uuid,
+    timestamp: SystemTime
+}
+
+struct SessionRecord {
+    session_id: Uuid,
+    auth_code: Uuid
 }
