@@ -30,15 +30,27 @@ impl IdentityStore {
                             |session| current_timestamp.duration_since(session.timestamp).as_secs() > 60
                         );
                         if removal_point != 0 {
-                            let expired_codes = locked_queue.drain(removal_point + 1..);
-                            for code in expired_codes {
-                                local_session_store.remove(&code.session_id.to_string());
+                            let expired_sessions = locked_queue.drain(removal_point + 1..);
+                            for sessions in expired_sessions {
+                                local_session_store.remove(&sessions.session_id.to_string());
                             }
                         }
                     }
                 }
             })
         } 
+    }
+
+    pub fn verify_session(&self, session_id: String) -> bool {
+        match self.session_store.remove(&session_id) {
+            Some((_, session)) => {
+                if Instant::now().duration_since(session.timestamp).as_secs() > 60 {
+                    return false;
+                }
+                return true;
+            },
+            None => false,
+        }
     }
 }
 
