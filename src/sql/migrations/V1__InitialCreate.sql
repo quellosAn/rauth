@@ -1,6 +1,6 @@
 
 CREATE TABLE application_user (
-    user_id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     access_failed_count INT NOT NULL,
     email VARCHAR(256) NOT NULL,
     email_confirmed BIT NOT NULL,
@@ -16,26 +16,27 @@ CREATE TABLE application_user (
 
 CREATE TABLE application_role (
     role_id serial PRIMARY KEY,
-    name nvarchar(50) NOT NULL UNIQUE,
+    name VARCHAR(50) NOT NULL UNIQUE,
     created_on TIMESTAMP NOT NULL,
     last_modified_on TIMESTAMP NOT NULL 
-)
+);
 
 CREATE TABLE user_role (
     user_id uuid NOT NULL,
     role_id INT NOT NULL,
     PRIMARY KEY (user_id, role_id)
-) 
+);
 
 CREATE TABLE persisted_grant (
-    grant_id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    grant_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     consumed_time TIMESTAMP NULL,
     create_time TIMESTAMP NOT NULL,
-    description nvarchar(200) NULL,
-    expiration TIMESTAMP NOT NULL,
-    session_id 
-
-)
+    data VARCHAR(1024) NOT NULL,
+    description VARCHAR(200) NULL,
+    expiration TIMESTAMP NULL,
+    session_id uuid NULL,
+    type VARCHAR(50) NOT NULL
+);
 
 CREATE INDEX role_name_index on application_role (name);
 CREATE INDEX email_index on application_user (email);
