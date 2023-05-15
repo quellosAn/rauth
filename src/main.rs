@@ -12,16 +12,19 @@ use hyper::server::conn::http1;
 use hyper::body::{Bytes, Incoming};
 use hyper::Method;
 use hyper::StatusCode;
+use serde::Deserialize;
+use sql::update_schema;
 use stores::identity_store::IdentityStore;
 use tokio::net::TcpListener;
 mod stores;
-
+mod sql;
 
 
 #[tokio::main]
 async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
     let listener = TcpListener::bind(addr).await.unwrap();
+    update_schema().await;
     loop {
         let (stream, _) = listener.accept().await.unwrap();
         tokio::spawn(async move {
@@ -40,6 +43,12 @@ const REQUIRED_PARAMS: &[&str; 3] = &["response_type", "client_id", "scope"];
 
 struct AuthService {
     ident_store: IdentityStore
+}
+
+#[derive(Deserialize, Debug)]
+struct LoginRequestBody {
+    username: String,
+    password: String
 }
 
 impl Service<Request<Incoming>> for AuthService {
@@ -69,6 +78,21 @@ impl Service<Request<Incoming>> for AuthService {
                     Ok(bad_request) 
                 })   
                 
+            }
+            (&Method::POST, "/Login") => {
+                Box::pin(async {
+                    let incoming_body = req.collect().await?.to_bytes().to_vec();
+                    let login_request = serde_json::from_slice::<LoginRequestBody>(&incoming_body);
+                    match login_request {
+                        Ok(login_info) => {
+                            
+                        },
+                        Err(_) => todo!(),
+                    }
+                    let mut not_found = Response::new(empty());
+                    *not_found.status_mut() = StatusCode::NOT_FOUND;
+                    Ok(not_found)
+                })
             }
             _ => {
                 Box::pin(async {
