@@ -2,6 +2,9 @@ use std::future::Future;
 use std::net::SocketAddr;
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::sync::Arc;
+use config::ConfigHandler;
+use config::parse_config;
 use http_body_util::Full;
 use http_body_util::Empty;
 use http_body_util::combinators::BoxBody;
@@ -18,31 +21,48 @@ use stores::identity_store::IdentityStore;
 use tokio::net::TcpListener;
 mod stores;
 mod sql;
+mod config;
 
 
 #[tokio::main]
 async fn main() {
     let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
     let listener = TcpListener::bind(addr).await.unwrap();
-    update_schema().await;
-    loop {
-        let (stream, _) = listener.accept().await.unwrap();
-        tokio::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(stream, AuthService {
-                    ident_store: IdentityStore::new()
-                })
-                .await {
-                    println!("Error serving connection: {:?}", err);
-            }
-        });
+    let config_path = std::env::args().nth(1).expect("No config path provided.");
+    
+    if let Ok(server_config) = parse_config(config_path) {
+
+        update_schema(&server_config.sql_connection_string).await;
+        //NOTE: It may be a good idea to implement clone on this config object
+        //because ARC basically uses atomic instructions for reference counting
+        //and could become a bottle neck.
+        let config_ref = Arc::new(server_config);
+        
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+
+            //clone config reference and move to 
+            let config_ref = config_ref.clone();
+            tokio::spawn(async move {
+                if let Err(err) = http1::Builder::new()
+                    .serve_connection(stream, AuthService {
+                        config: config_ref
+                    })
+                    .await {
+                        println!("Error serving connection: {:?}", err);
+                }
+            });
+        }
+    } else {
+        panic!("No Server Configuration Provided");
     }
+    
 }
 
 const REQUIRED_PARAMS: &[&str; 3] = &["response_type", "client_id", "scope"];
 
 struct AuthService {
-    ident_store: IdentityStore
+    config: Arc<ConfigHandler>
 }
 
 #[derive(Deserialize, Debug)]

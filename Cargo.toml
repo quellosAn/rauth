@@ -17,4 +17,5 @@ dashmap = "5.4.0"
 refinery = { version = "0.8", features = ["mysql_async", "tiberius", "tokio-postgres"]}
 tokio-postgres = "0.7.8"
 barrel = "0.7.0"
+ring = "0.16.20"
 

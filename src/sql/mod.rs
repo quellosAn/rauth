@@ -7,10 +7,10 @@ mod embedded {
     embed_migrations!("src\\sql\\migrations");
 }
 
-pub async fn update_schema() {
+pub async fn update_schema(connection_str: &String) {
     
     let (mut client, connection) =
-        tokio_postgres::connect("host=localhost user=postgres password=diceman16 dbname=dev port=5432", NoTls).await.unwrap();
+        tokio_postgres::connect(connection_str, NoTls).await.unwrap();
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
