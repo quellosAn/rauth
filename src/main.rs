@@ -17,7 +17,6 @@ use hyper::Method;
 use hyper::StatusCode;
 use serde::Deserialize;
 use sql::update_schema;
-use stores::identity_store::IdentityStore;
 use tokio::net::TcpListener;
 mod stores;
 mod sql;
@@ -26,13 +25,16 @@ mod config;
 
 #[tokio::main]
 async fn main() {
-    let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
-    let listener = TcpListener::bind(addr).await.unwrap();
+    
     let config_path = std::env::args().nth(1).expect("No config path provided.");
     
     if let Ok(server_config) = parse_config(config_path) {
+        let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
 
+        //TODO: Port should be provided by config
+        let listener = TcpListener::bind(addr).await.expect("Unable to bind to provided port.");
         update_schema(&server_config.sql_connection_string).await;
+
         //NOTE: It may be a good idea to implement clone on this config object
         //because ARC basically uses atomic instructions for reference counting
         //and could become a bottle neck.
