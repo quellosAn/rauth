@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 use config::ConfigHandler;
-use config::parse_config;
 use http_body_util::Full;
 use http_body_util::Empty;
 use http_body_util::combinators::BoxBody;
@@ -16,11 +15,15 @@ use hyper::body::{Bytes, Incoming};
 use hyper::Method;
 use hyper::StatusCode;
 use serde::Deserialize;
-use sql::update_schema;
+use services::workers::CleanupWorker;
+use sql::{ update_schema, fetch_user };
+use crypto::hash_password;
 use tokio::net::TcpListener;
-mod stores;
+
+mod services;
 mod sql;
 mod config;
+mod crypto;
 
 
 #[tokio::main]
@@ -28,17 +31,17 @@ async fn main() {
     
     let config_path = std::env::args().nth(1).expect("No config path provided.");
     
-    if let Ok(server_config) = parse_config(config_path) {
+    if let Ok(server_config) = ConfigHandler::parse_config(config_path) {
         let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
 
         //TODO: Port should be provided by config
         let listener = TcpListener::bind(addr).await.expect("Unable to bind to provided port.");
         update_schema(&server_config.sql_connection_string).await;
-
+        let config_ref = Arc::new(server_config);
+        let _worker = CleanupWorker::new(config_ref.clone());
         //NOTE: It may be a good idea to implement clone on this config object
         //because ARC basically uses atomic instructions for reference counting
         //and could become a bottle neck.
-        let config_ref = Arc::new(server_config);
         
         loop {
             let (stream, _) = listener.accept().await.unwrap();
@@ -68,7 +71,7 @@ struct AuthService {
 }
 
 #[derive(Deserialize, Debug)]
-struct LoginRequestBody {
+pub struct LoginRequestBody {
     username: String,
     password: String
 }
@@ -79,6 +82,7 @@ impl Service<Request<Incoming>> for AuthService {
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
     fn call(&mut self, req: Request<Incoming>) -> Self::Future {
+        let confic_ref = Box::new(self.config.clone());
         match(req.method(), req.uri().path()) {
             (&Method::GET, "/authorize") => {
                 if let Some(query) = req.uri().query() {
@@ -94,7 +98,7 @@ impl Service<Request<Incoming>> for AuthService {
                     }
                 } 
                 
-                Box::pin(async { 
+                Box::pin(async move { 
                     let mut bad_request = Response::new(empty());
                     *bad_request.status_mut() = StatusCode::BAD_REQUEST;
                     Ok(bad_request) 
@@ -102,12 +106,21 @@ impl Service<Request<Incoming>> for AuthService {
                 
             }
             (&Method::POST, "/Login") => {
-                Box::pin(async {
+                
+                Box::pin(async move {
                     let incoming_body = req.collect().await?.to_bytes().to_vec();
                     let login_request = serde_json::from_slice::<LoginRequestBody>(&incoming_body);
+                    
+                    //TODO: Decide on max request size.
                     match login_request {
                         Ok(login_info) => {
-                            
+                            if let Ok(hash) = hash_password(&login_info.password) {
+                                if let Some(user) = fetch_user(
+                                    &confic_ref.sql_connection_string, 
+                                    &login_info.username).await {
+                                        
+                                }
+                            }
                         },
                         Err(_) => todo!(),
                     }
