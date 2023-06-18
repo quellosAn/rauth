@@ -1,14 +1,14 @@
 use std::fs;
 use serde::Deserialize;
-
+use std::path::{PathBuf};
 
 
 #[derive(Deserialize, Debug)]
 pub struct ConfigHandler {
     pub sql_connection_string: String,
     pub server_port: i32,
-    pub public_key: String,
-    pub private_key: String
+    pub cert: PathBuf,
+    pub key: PathBuf
 }
 
 impl ConfigHandler {

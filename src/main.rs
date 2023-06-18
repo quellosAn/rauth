@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::collections::HashMap;
+use std::sync::Arc;
 use config::ConfigHandler;
 use crypto::verify_password;
 use http_body_util::{
@@ -22,6 +23,8 @@ use services::workers::CleanupWorker;
 use sql::{ update_schema, fetch_user };
 use tokio::net::TcpListener;
 use lazy_static::lazy_static;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::ServerConfig;
 
 mod services;
 mod sql;
@@ -38,14 +41,29 @@ lazy_static! {
 async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
-
+    
     //TODO: Port should be provided by config
     let listener = TcpListener::bind(addr).await.expect("Unable to bind to provided port.");
     update_schema(&SERVER_CONFIG.sql_connection_string).await;
     let _worker = CleanupWorker::new();
     
+    //TLS initialization
+    let certs = crypto::load_cert(&SERVER_CONFIG.cert).unwrap();
+    let mut keys = crypto::load_key(&SERVER_CONFIG.key).unwrap();
+
+    let config = ServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth()
+        .with_single_cert(certs, keys.remove(0))
+        .unwrap();
+    let acceptor = TlsAcceptor::from(Arc::new(config));
+
+
     loop {
         let (stream, _) = listener.accept().await.unwrap();
+        let acceptor = acceptor.clone();
+
+        let stream = acceptor.accept(stream).await.unwrap();
 
         //clone config reference and move to 
         tokio::spawn(async move {
@@ -68,7 +86,7 @@ pub struct LoginRequestBody {
 }
 
 async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    match(req.method(), req.uri().path()) {
+    match(req.method(), req.uri().path(), ) {
         (&Method::GET, "/authorize") => {
             if let Some(query) = req.uri().query() {
                 let test:HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes())
