@@ -1628,6 +1628,7 @@ dependencies = [
  "chrono",
  "http-body-util",
  "hyper",
+ "lazy_static",
  "refinery",
  "ring",
  "serde",

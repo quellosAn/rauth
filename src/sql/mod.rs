@@ -42,16 +42,16 @@ pub async fn clear_expired_grants(connection_string: &String, current_timestamp:
 }
 
 pub struct User {
-    user_id: uuid::Uuid,
-    access_failed_count: i32,
-    email: String,
-    email_confirmed: bool,
-    lockout_enabled: Option<bool>,
-    lockout_end: Option<chrono::DateTime<Utc>>,
-    username: String,
-    password_hash: String,
-    phone_number: Option<String>,
-    phone_number_confirmed: Option<bool>
+    pub user_id: uuid::Uuid,
+    pub access_failed_count: i32,
+    pub email: String,
+    pub email_confirmed: bool,
+    pub lockout_enabled: Option<bool>,
+    pub lockout_end: Option<chrono::DateTime<Utc>>,
+    pub username: String,
+    pub password_hash: String,
+    pub phone_number: Option<String>,
+    pub phone_number_confirmed: Option<bool>
 }
 
 pub async fn fetch_user(connection_string: &String, username: &String) -> Option<User> {
