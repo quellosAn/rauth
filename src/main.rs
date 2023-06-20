@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::collections::HashMap;
 use std::sync::Arc;
 use config::ConfigHandler;
-use crypto::verify_password;
+use crypto::{verify_password, hash_password};
 use http_body_util::{
     Full,
     Empty,
@@ -14,17 +14,19 @@ use hyper::{
     Response,
     Method, 
     StatusCode,
-    body::Bytes,
+    body::{Bytes, Body},
     server::conn::http1,
     service::service_fn
 };
 use serde::Deserialize;
 use services::workers::CleanupWorker;
-use sql::{ update_schema, fetch_user };
+use sql::{ update_schema, fetch_user, insert_user };
 use tokio::net::TcpListener;
 use lazy_static::lazy_static;
-use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::ServerConfig;
+use tokio_rustls::{
+    TlsAcceptor,
+    rustls::ServerConfig
+};
 
 mod services;
 mod sql;
@@ -41,10 +43,10 @@ lazy_static! {
 async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
-    
+
     //TODO: Port should be provided by config
     let listener = TcpListener::bind(addr).await.expect("Unable to bind to provided port.");
-    update_schema(&SERVER_CONFIG.sql_connection_string).await;
+    update_schema().await;
     let _worker = CleanupWorker::new();
     
     //TLS initialization
@@ -85,8 +87,22 @@ pub struct LoginRequestBody {
     password: String
 }
 
+#[derive(Deserialize, Debug)]
+pub struct CreateAccountRequestBody {
+    username: String,
+    password: String,
+    email: String
+}
+
 async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
-    match(req.method(), req.uri().path(), ) {
+    let upper = req.body().size_hint().upper().unwrap_or(u64::MAX);
+    if upper > 1024 * 64 {
+        let mut resp = Response::new(full("Body too big"));
+        *resp.status_mut() = hyper::StatusCode::PAYLOAD_TOO_LARGE;
+        return Ok(resp);
+    }
+    match(req.method(), req.uri().path()) {
+        
         (&Method::GET, "/authorize") => {
             if let Some(query) = req.uri().query() {
                 let test:HashMap<_, _> = url::form_urlencoded::parse(query.as_bytes())
@@ -118,6 +134,19 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
             Ok(not_found)
         }
         (&Method::POST, "/CreateAccount") => {
+            let incoming_body = req.collect().await?.to_bytes().to_vec();
+            let create_request = serde_json::from_slice::<CreateAccountRequestBody>(&incoming_body);
+
+            if let Ok(account_info) = create_request {
+                let hash_result = hash_password(&account_info.password);
+                match hash_result {
+                    Ok(hash) => {
+                        insert_user(account_info, hash).await;
+                    },
+                    Err(_) => todo!(),
+                }
+            }
+            
             Ok(Response::new(full(
                 "Login Endpoint"
             )))

@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
-use tokio_postgres::{self, NoTls};
+use tokio_postgres::{NoTls, Client};
+
+use crate::{CreateAccountRequestBody, SERVER_CONFIG};
 
 mod embedded {
     use refinery::embed_migrations;
@@ -7,17 +9,16 @@ mod embedded {
     embed_migrations!("src\\sql\\migrations");
 }
 
+async fn connect() -> Client {
 
-pub async fn update_schema(connection_str: &String) {
+    let (client, connection) = tokio_postgres::connect(&SERVER_CONFIG.sql_connection_string, NoTls).await.unwrap();
+    tokio::spawn(connection);
+    client
+}
+
+pub async fn update_schema() {
     
-    let (mut client, connection) =
-        tokio_postgres::connect(connection_str, NoTls).await.unwrap();
-
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
+    let mut client = connect().await;
     println!("Updating Schema");
 
     embedded::migrations::runner().run_async(&mut client).await.unwrap();
@@ -25,15 +26,7 @@ pub async fn update_schema(connection_str: &String) {
 }
 
 pub async fn clear_expired_grants(connection_string: &String, current_timestamp: &DateTime<chrono::offset::Utc>) {
-    let (client, connection) =
-        tokio_postgres::connect(connection_string, NoTls).await.unwrap();
-
-    //spin off connection thread
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
+    let client = connect().await;
     
     let _result = client.execute(
         "DELETE FROM persisted_grant WHERE create_time <= $1",
@@ -55,15 +48,7 @@ pub struct User {
 }
 
 pub async fn fetch_user(connection_string: &String, username: &String) -> Option<User> {
-    let (client, connection) =
-        tokio_postgres::connect(connection_string, NoTls).await.unwrap();
-
-    //spin off connection thread
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
-        }
-    });
+    let client = connect().await;
 
     let result = client.query_one(
         "
@@ -103,4 +88,21 @@ pub async fn fetch_user(connection_string: &String, username: &String) -> Option
             Err(_) => None,
         }
     
+}
+
+pub async fn insert_user(create_body: CreateAccountRequestBody, password_hash: String) {
+    let client = connect().await;
+    
+    client.execute(
+        "
+            INSERT INTO application_user
+            VALUES
+            (0, $1, 0, NULL, NULL, $2, $3, $4, $5, NULL, NULL)
+        ", 
+        &[&create_body.email, 
+                &create_body.username, 
+                &password_hash, 
+                &Utc::now(), 
+                &Utc::now()]
+    ).await.unwrap();
 }
