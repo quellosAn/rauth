@@ -9,7 +9,7 @@ use argon2::{
     Argon2, PasswordVerifier
 };
 use tokio_rustls::rustls::{Certificate, PrivateKey};
-use rustls_pemfile::{certs, pkcs8_private_keys};
+use rustls_pemfile::{certs, ec_private_keys};
 
 pub fn hash_password(password: &String) -> Result<String, argon2::password_hash::Error> {
     let salt = SaltString::generate(&mut OsRng);
@@ -34,7 +34,7 @@ pub fn load_cert(path: &Path) -> io::Result<Vec<Certificate>> {
 }
 
 pub fn load_key(path: &Path) -> io::Result<Vec<PrivateKey>> {
-    pkcs8_private_keys(&mut BufReader::new(File::open(path)?))
+    ec_private_keys(&mut BufReader::new(File::open(path)?))
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid key"))
         .map(|mut keys| keys.drain(..).map(PrivateKey).collect())
 }

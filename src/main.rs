@@ -28,10 +28,6 @@ use tokio_rustls::{
     rustls::ServerConfig
 };
 use env_logger::{Builder, Target};
-use log::{debug, LevelFilter};
-use log::error;
-use log::info;
-use log::warn;
 
 
 mod services;
@@ -69,14 +65,14 @@ async fn main() {
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
         .unwrap();
-    //let acceptor = TlsAcceptor::from(Arc::new(config));
+    let acceptor = TlsAcceptor::from(Arc::new(config));
 
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-        //let acceptor = acceptor.clone();
+        let acceptor = acceptor.clone();
 
-        //let stream = acceptor.accept(stream).await.unwrap();
+        let stream = acceptor.accept(stream).await.unwrap();
 
         //clone config reference and move to 
         tokio::spawn(async move {
