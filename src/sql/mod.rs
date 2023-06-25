@@ -47,7 +47,7 @@ pub struct User {
     pub phone_number_confirmed: Option<bool>
 }
 
-pub async fn fetch_user(connection_string: &String, username: &String) -> Option<User> {
+pub async fn fetch_user(username: &String) -> Option<User> {
     let client = connect().await;
 
     let result = client.query_one(
@@ -96,8 +96,12 @@ pub async fn insert_user(create_body: CreateAccountRequestBody, password_hash: S
     client.execute(
         "
             INSERT INTO application_user
+            (
+                access_failed_count, email, email_confirmed, 
+                lockout_enabled, lockout_end, username, password_hash, 
+                created_on, last_modified_on, phone_number, phone_number_confirmed)
             VALUES
-            (0, $1, 0, NULL, NULL, $2, $3, $4, $5, NULL, NULL)
+            (0, $1, b'1', NULL, NULL, $2, $3, $4, $5, NULL, NULL)
         ", 
         &[&create_body.email, 
                 &create_body.username, 

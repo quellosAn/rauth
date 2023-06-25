@@ -27,6 +27,12 @@ use tokio_rustls::{
     TlsAcceptor,
     rustls::ServerConfig
 };
+use env_logger::{Builder, Target};
+use log::{debug, LevelFilter};
+use log::error;
+use log::info;
+use log::warn;
+
 
 mod services;
 mod sql;
@@ -44,6 +50,11 @@ async fn main() {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
 
+    let mut builder = Builder::from_default_env();
+    builder.target(Target::Stdout);
+
+    builder.init();
+
     //TODO: Port should be provided by config
     let listener = TcpListener::bind(addr).await.expect("Unable to bind to provided port.");
     update_schema().await;
@@ -58,18 +69,19 @@ async fn main() {
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
         .unwrap();
-    let acceptor = TlsAcceptor::from(Arc::new(config));
+    //let acceptor = TlsAcceptor::from(Arc::new(config));
 
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-        let acceptor = acceptor.clone();
+        //let acceptor = acceptor.clone();
 
-        let stream = acceptor.accept(stream).await.unwrap();
+        //let stream = acceptor.accept(stream).await.unwrap();
 
         //clone config reference and move to 
         tokio::spawn(async move {
             if let Err(err) = http1::Builder::new()
+            
                 .serve_connection(stream, service_fn(auth_service))
                 .await {
                     println!("Error serving connection: {:?}", err);
@@ -125,7 +137,6 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
             let incoming_body = req.collect().await?.to_bytes().to_vec();
             let login_request = serde_json::from_slice::<LoginRequestBody>(&incoming_body);
             
-            //TODO: Decide on max request size.
             if let Ok(login_info) = login_request {
                 process_login(login_info).await;
             }
@@ -138,18 +149,20 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
             let create_request = serde_json::from_slice::<CreateAccountRequestBody>(&incoming_body);
 
             if let Ok(account_info) = create_request {
-                let hash_result = hash_password(&account_info.password);
-                match hash_result {
+                match hash_password(&account_info.password) {
                     Ok(hash) => {
                         insert_user(account_info, hash).await;
+                        return Ok(Response::new(empty()))
                     },
-                    Err(_) => todo!(),
+                    Err(hash_error) => {
+                        //TODO: Do logging here
+                    }
                 }
             }
             
-            Ok(Response::new(full(
-                "Login Endpoint"
-            )))
+            let mut error_res = Response::new(empty());
+            *error_res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            return Ok(error_res);
         }
         _ => {
             let mut not_found = Response::new(empty());
@@ -161,15 +174,14 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
 }
 
 async fn process_login(login_info: LoginRequestBody) {
-    if let Some(user) = fetch_user(
-        &SERVER_CONFIG.sql_connection_string, 
-        &login_info.username).await {
-
+    if let Some(user) = fetch_user(&login_info.username).await {
         if let Ok(valid) = verify_password(&login_info.password, &user.password_hash) {
 
         }
     }
 }
+
+
 
 fn empty() -> BoxBody<Bytes, hyper::Error> {
     Empty::<Bytes>::new()
