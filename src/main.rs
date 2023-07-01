@@ -27,8 +27,12 @@ use tokio_rustls::{
     TlsAcceptor,
     rustls::ServerConfig
 };
-use env_logger::{Builder, Target};
-
+use env_logger::{
+    Builder, 
+    Target
+};
+use log::info;
+use log::error;
 
 mod services;
 mod sql;
@@ -65,8 +69,8 @@ async fn main() {
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
         .unwrap();
-    let acceptor = TlsAcceptor::from(Arc::new(config));
 
+    let acceptor = TlsAcceptor::from(Arc::new(config));
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
@@ -151,9 +155,15 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
                         return Ok(Response::new(empty()))
                     },
                     Err(hash_error) => {
-                        //TODO: Do logging here
+                        error!("Password hash failed with error {}", hash_error);
                     }
                 }
+            } else {
+                info!("/CreateAccount malformed JSON body, request discarded");
+                
+                let mut error_res = Response::new(empty());
+                *error_res.status_mut() = StatusCode::BAD_REQUEST;
+                return Ok(error_res);
             }
             
             let mut error_res = Response::new(empty());
@@ -164,7 +174,6 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
             let mut not_found = Response::new(empty());
             *not_found.status_mut() = StatusCode::NOT_FOUND;
             Ok(not_found)
-            
         }
     }
 }
@@ -176,8 +185,6 @@ async fn process_login(login_info: LoginRequestBody) {
         }
     }
 }
-
-
 
 fn empty() -> BoxBody<Bytes, hyper::Error> {
     Empty::<Bytes>::new()
