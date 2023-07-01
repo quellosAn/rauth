@@ -8,7 +8,15 @@ pub struct ConfigHandler {
     pub sql_connection_string: String,
     pub server_port: i32,
     pub cert: PathBuf,
-    pub key: PathBuf
+    pub key: PathBuf,
+    pub password_requirments: PasswordRequirements
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PasswordRequirements {
+    pub minimum_size: usize,
+    pub maximum_size: usize,
+    pub forbidden_characters: String
 }
 
 impl ConfigHandler {
