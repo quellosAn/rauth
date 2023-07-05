@@ -1,5 +1,6 @@
-use std::net::SocketAddr;
+use std::net::{SocketAddr, Ipv4Addr, IpAddr};
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 use config::ConfigHandler;
 use crypto::{verify_password, hash_password};
@@ -48,45 +49,53 @@ lazy_static! {
 #[tokio::main]
 async fn main() {
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 9000));
-
-    let mut builder = Builder::from_default_env();
-    builder.target(Target::Stdout);
-
-    builder.init();
-
-    //TODO: Port should be provided by config
-    let listener = TcpListener::bind(addr).await.expect("Unable to bind to provided port.");
-    update_schema().await;
-    let _worker = CleanupWorker::new();
-    
+    init_logger();
+    //No error handing during this stretch of code.
+    //The server cannot/shouldn't be allowed to start 
+    //if these initialization steps fail. These include
+    //operations such as TLS setup and port binding.
+    update_schema().await
+        .expect("Unable to apply sql migrations, likely caused by a server connection issue.");
+    let parsed_address = Ipv4Addr::from_str(&SERVER_CONFIG.server_address)
+        .expect("Unable to parse provided Ip Address.");
+    let addr = SocketAddr::new(
+        IpAddr::V4(parsed_address), SERVER_CONFIG.server_port
+    );
+    let listener = TcpListener::bind(addr).await
+        .expect("Unable to bind to provided port.");
+    let certs = crypto::load_cert(&SERVER_CONFIG.cert)
+        .expect("Unable to parse or find provided TLS certificate.");
+    let mut keys = crypto::load_key(&SERVER_CONFIG.key)
+        .expect("Unable to parse or find provided TLS key.");
     //TLS initialization
-    let certs = crypto::load_cert(&SERVER_CONFIG.cert).unwrap();
-    let mut keys = crypto::load_key(&SERVER_CONFIG.key).unwrap();
-
     let config = ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(certs, keys.remove(0))
-        .unwrap();
+        .expect("Unable to set up TLS with provided certificate and key.");
 
+    let _worker = CleanupWorker::new();
     let acceptor = TlsAcceptor::from(Arc::new(config));
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
         let acceptor = acceptor.clone();
 
-        let stream = acceptor.accept(stream).await.unwrap();
-
-        //clone config reference and move to 
-        tokio::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-            
-                .serve_connection(stream, service_fn(auth_service))
-                .await {
-                    println!("Error serving connection: {:?}", err);
+        match acceptor.accept(stream).await {
+            Ok(stream) => {
+                tokio::spawn(async move {
+                    if let Err(err) = http1::Builder::new()
+                    
+                        .serve_connection(stream, service_fn(auth_service))
+                        .await {
+                            println!("Error serving connection: {:?}", err);
+                    }
+                });
+            },
+            Err(tls_error) => {
+                error!("Error during TLS handshake {}", tls_error);
             }
-        });
+        }
     }
 }
 
@@ -149,6 +158,7 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
             let create_request = serde_json::from_slice::<CreateAccountRequestBody>(&incoming_body);
 
             if let Ok(account_info) = create_request {
+                
                 match hash_password(&account_info.password) {
                     Ok(hash) => {
                         insert_user(account_info, hash).await;
@@ -198,3 +208,9 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
         .boxed()
 }
 
+fn init_logger() {
+    let mut builder = Builder::from_default_env();
+    builder.target(Target::Stdout);
+
+    builder.init();
+}

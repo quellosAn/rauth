@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use tokio_postgres::{NoTls, Client};
-
+use refinery::error::Error;
 use crate::{CreateAccountRequestBody, SERVER_CONFIG};
 
 mod embedded {
@@ -16,12 +16,14 @@ async fn connect() -> Client {
     client
 }
 
-pub async fn update_schema() {
+pub async fn update_schema() -> Result<(), Error> {
     
     let mut client = connect().await;
     println!("Updating Schema");
 
-    embedded::migrations::runner().run_async(&mut client).await.unwrap();
+    embedded::migrations::runner().run_async(&mut client).await?;
+
+    Ok(())
 
 }
 
@@ -101,7 +103,7 @@ pub async fn insert_user(create_body: CreateAccountRequestBody, password_hash: S
                 lockout_enabled, lockout_end, username, password_hash, 
                 created_on, last_modified_on, phone_number, phone_number_confirmed)
             VALUES
-            (0, $1, b'1', NULL, NULL, $2, $3, $4, $5, NULL, NULL)
+            (0, $1, TRUE, NULL, NULL, $2, $3, $4, $5, NULL, NULL)
         ", 
         &[&create_body.email, 
                 &create_body.username, 

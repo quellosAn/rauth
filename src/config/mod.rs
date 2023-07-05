@@ -6,7 +6,8 @@ use std::path::{PathBuf};
 #[derive(Deserialize, Debug)]
 pub struct ConfigHandler {
     pub sql_connection_string: String,
-    pub server_port: i32,
+    pub server_address: String,
+    pub server_port: u16,
     pub cert: PathBuf,
     pub key: PathBuf,
     pub password_requirments: PasswordRequirements
