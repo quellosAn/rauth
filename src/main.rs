@@ -156,29 +156,30 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
         (&Method::POST, "/CreateAccount") => {
             let incoming_body = req.collect().await?.to_bytes().to_vec();
             let create_request = serde_json::from_slice::<CreateAccountRequestBody>(&incoming_body);
-
+            let mut res = Response::new(empty());
             if let Ok(account_info) = create_request {
-                
-                match hash_password(&account_info.password) {
-                    Ok(hash) => {
-                        insert_user(account_info, hash).await;
-                        return Ok(Response::new(empty()))
-                    },
-                    Err(hash_error) => {
-                        error!("Password hash failed with error {}", hash_error);
+                if password_valid(&account_info.password) {
+                    match hash_password(&account_info.password) {
+                        Ok(hash) => {
+                            insert_user(account_info, hash).await;
+                            return Ok(Response::new(empty()))
+                        },
+                        Err(hash_error) => {
+                            error!("Password hash failed with error {}", hash_error);
+                        }
                     }
+                } else {
+                    info!("/CreateAccount password invalid by requirements, request discarded.");
+                    *res.status_mut() = StatusCode::BAD_REQUEST;
+                    return Ok(res);
                 }
             } else {
                 info!("/CreateAccount malformed JSON body, request discarded");
-                
-                let mut error_res = Response::new(empty());
-                *error_res.status_mut() = StatusCode::BAD_REQUEST;
-                return Ok(error_res);
+                *res.status_mut() = StatusCode::BAD_REQUEST;
+                return Ok(res);
             }
-            
-            let mut error_res = Response::new(empty());
-            *error_res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-            return Ok(error_res);
+            *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+            return Ok(res);
         }
         _ => {
             let mut not_found = Response::new(empty());
@@ -211,6 +212,15 @@ fn full<T: Into<Bytes>>(chunk: T) -> BoxBody<Bytes, hyper::Error> {
 fn init_logger() {
     let mut builder = Builder::from_default_env();
     builder.target(Target::Stdout);
-
     builder.init();
+}
+
+fn password_valid(password: &String) -> bool {
+    let requirements = &SERVER_CONFIG.password_requirments;
+    let pass_length = password.len();
+    let mut disallowed_chars = requirements.forbidden_characters.chars();
+    
+    pass_length > requirements.maximum_size && 
+    pass_length < requirements.minimum_size &&
+    disallowed_chars.any(|pass_char| password.contains(pass_char))
 }
