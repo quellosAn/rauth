@@ -135,7 +135,7 @@ impl CreateAccountRequest {
             }
             return Ok(true); 
         }
-        return Ok(false); 
+        Ok(false)
     }
 }
 
@@ -197,7 +197,7 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
                 return Ok(res);
             }
             *res.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
-            return Ok(res);
+            Ok(res)
         }
         _ => {
             let mut not_found = Response::new(empty());

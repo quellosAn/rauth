@@ -22,6 +22,6 @@ pub async fn send_email_verification(dest_address: &Mailbox, email_config: &Emai
         .credentials(creds)
         .build();
     
-    Ok(mailer.send(email).await?)
+    mailer.send(email).await
         
 }
