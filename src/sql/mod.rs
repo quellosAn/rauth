@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use tokio_postgres::{NoTls, Client};
 use refinery::error::Error;
-use crate::{CreateAccountRequestBody, SERVER_CONFIG};
+use crate::{CreateAccountRequest, SERVER_CONFIG};
 
 mod embedded {
     use refinery::embed_migrations;
@@ -27,7 +27,7 @@ pub async fn update_schema() -> Result<(), Error> {
 
 }
 
-pub async fn clear_expired_grants(connection_string: &String, current_timestamp: &DateTime<chrono::offset::Utc>) {
+pub async fn clear_expired_grants(current_timestamp: &DateTime<chrono::offset::Utc>) {
     let client = connect().await;
     
     let _result = client.execute(
@@ -92,7 +92,7 @@ pub async fn fetch_user(username: &String) -> Option<User> {
     
 }
 
-pub async fn insert_user(create_body: CreateAccountRequestBody, password_hash: String) {
+pub async fn insert_user(create_body: &CreateAccountRequest, password_hash: String) {
     let client = connect().await;
     
     client.execute(
@@ -105,7 +105,7 @@ pub async fn insert_user(create_body: CreateAccountRequestBody, password_hash: S
             VALUES
             (0, $1, TRUE, NULL, NULL, $2, $3, $4, $5, NULL, NULL)
         ", 
-        &[&create_body.email, 
+        &[&create_body.email.email.to_string(), 
                 &create_body.username, 
                 &password_hash, 
                 &Utc::now(), 

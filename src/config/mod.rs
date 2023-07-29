@@ -1,6 +1,7 @@
 use std::fs;
+use lettre::message::Mailbox;
 use serde::Deserialize;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
 
 #[derive(Deserialize, Debug)]
@@ -10,7 +11,9 @@ pub struct ConfigHandler {
     pub server_port: u16,
     pub cert: PathBuf,
     pub key: PathBuf,
-    pub password_requirments: PasswordRequirements
+    pub password_requirments: PasswordRequirements,
+    pub require_email_verification: bool,
+    pub email_config: Option<EmailConfig>
 }
 
 #[derive(Deserialize, Debug)]
@@ -18,6 +21,19 @@ pub struct PasswordRequirements {
     pub minimum_size: usize,
     pub maximum_size: usize,
     pub forbidden_characters: String
+}
+
+#[derive(Deserialize, Debug)]
+pub struct EmailConfig {
+    pub smtp_username: String,
+    pub smtp_password: String,
+    pub server_domain: String,
+    pub from_mailbox: Mailbox,
+    pub replay_to_mailbox: Mailbox,
+    pub subject: String,
+    pub header: String,
+    pub body_template_path: PathBuf,
+    pub body: String
 }
 
 impl ConfigHandler {

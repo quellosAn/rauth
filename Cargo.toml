@@ -23,3 +23,4 @@ tokio-rustls = { version = "0.24.1", features = ["logging", "tls12"] }
 rustls-pemfile = "1.0.2"
 env_logger = "0.10.0"
 log = { version = "0.4.19" }
+lettre = { version = "0.10.4", features = ["tokio1-rustls-tls", "tokio1-native-tls", "serde"]}

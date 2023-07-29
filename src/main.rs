@@ -19,9 +19,11 @@ use hyper::{
     server::conn::http1,
     service::service_fn
 };
+use lettre::message::Mailbox;
 use serde::Deserialize;
 use services::workers::CleanupWorker;
 use sql::{ update_schema, fetch_user, insert_user };
+use tokio::join;
 use tokio::net::TcpListener;
 use lazy_static::lazy_static;
 use tokio_rustls::{
@@ -32,6 +34,7 @@ use env_logger::{
     Builder, 
     Target
 };
+use services::email::send_email_verification;
 use log::info;
 use log::error;
 
@@ -85,15 +88,14 @@ async fn main() {
             Ok(stream) => {
                 tokio::spawn(async move {
                     if let Err(err) = http1::Builder::new()
-                    
                         .serve_connection(stream, service_fn(auth_service))
                         .await {
-                            println!("Error serving connection: {:?}", err);
+                            error!("Error serving connection: {}", err);
                     }
                 });
             },
             Err(tls_error) => {
-                error!("Error during TLS handshake {}", tls_error);
+                error!("Error completing TLS handshake {}", tls_error);
             }
         }
     }
@@ -109,11 +111,34 @@ pub struct LoginRequestBody {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct CreateAccountRequestBody {
+pub struct CreateAccountRequest {
     username: String,
     password: String,
-    email: String
+    email: Mailbox
 }
+
+impl CreateAccountRequest {
+    async fn process_request(&self) -> Result<bool, argon2::password_hash::Error>{
+        if password_valid(&self.password) {
+            let hash = hash_password(&self.password)?;
+            let insert_fut = insert_user(self, hash);
+            if let Some(config) = &SERVER_CONFIG.email_config {
+                let email_fut = send_email_verification(&self.email, config);
+                let ( _, email_response ) = join!(insert_fut, email_fut);
+                if email_response.is_ok() {
+                    
+                } 
+            } 
+            else 
+            {
+                insert_fut.await;
+            }
+            return Ok(true); 
+        }
+        return Ok(false); 
+    }
+}
+
 
 async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<BoxBody<Bytes, hyper::Error>>, hyper::Error> {
     let upper = req.body().size_hint().upper().unwrap_or(u64::MAX);
@@ -155,23 +180,16 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
         }
         (&Method::POST, "/CreateAccount") => {
             let incoming_body = req.collect().await?.to_bytes().to_vec();
-            let create_request = serde_json::from_slice::<CreateAccountRequestBody>(&incoming_body);
+            let create_request = serde_json::from_slice::<CreateAccountRequest>(&incoming_body);
             let mut res = Response::new(empty());
             if let Ok(account_info) = create_request {
-                if password_valid(&account_info.password) {
-                    match hash_password(&account_info.password) {
-                        Ok(hash) => {
-                            insert_user(account_info, hash).await;
-                            return Ok(Response::new(empty()))
-                        },
-                        Err(hash_error) => {
-                            error!("Password hash failed with error {}", hash_error);
-                        }
+                match account_info.process_request().await {
+                    Ok(_) => {
+                        return Ok(Response::new(empty()))
+                    },
+                    Err(hash_error) => {
+                        error!("Password hash failed with error {}", hash_error);
                     }
-                } else {
-                    info!("/CreateAccount password invalid by requirements, request discarded.");
-                    *res.status_mut() = StatusCode::BAD_REQUEST;
-                    return Ok(res);
                 }
             } else {
                 info!("/CreateAccount malformed JSON body, request discarded");
@@ -189,10 +207,11 @@ async fn auth_service(req: Request<hyper::body::Incoming>) -> Result<Response<Bo
     }
 }
 
+
 async fn process_login(login_info: LoginRequestBody) {
     if let Some(user) = fetch_user(&login_info.username).await {
-        if let Ok(valid) = verify_password(&login_info.password, &user.password_hash) {
-
+        if let Ok(_valid) = verify_password(&login_info.password, &user.password_hash) {
+            todo!("Build out login process")
         }
     }
 }
