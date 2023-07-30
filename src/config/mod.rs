@@ -23,7 +23,7 @@ pub struct PasswordRequirements {
     pub forbidden_characters: String
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct EmailConfig {
     pub smtp_username: String,
     pub smtp_password: String,

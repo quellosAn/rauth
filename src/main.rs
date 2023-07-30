@@ -23,7 +23,6 @@ use lettre::message::Mailbox;
 use serde::Deserialize;
 use services::workers::CleanupWorker;
 use sql::{ update_schema, fetch_user, insert_user };
-use tokio::join;
 use tokio::net::TcpListener;
 use lazy_static::lazy_static;
 use tokio_rustls::{
@@ -37,6 +36,8 @@ use env_logger::{
 use services::email::send_email_verification;
 use log::info;
 use log::error;
+use thiserror::Error;
+use lettre::transport::smtp::{self};
 
 mod services;
 mod sql;
@@ -71,6 +72,10 @@ async fn main() {
     let mut keys = crypto::load_key(&SERVER_CONFIG.key)
         .expect("Unable to parse or find provided TLS key.");
     //TLS initialization
+    if keys.len() == 0 {
+        println!("No certificate keys found unable to initialize TLS.");
+        return;
+    }
     let config = ServerConfig::builder()
         .with_safe_defaults()
         .with_no_client_auth()
@@ -117,22 +122,23 @@ pub struct CreateAccountRequest {
     email: Mailbox
 }
 
+#[derive(Error, Debug)]
+enum AccountCreationError {
+    #[error("Password hash failed.")]
+    PasswordHashError(#[from] argon2::password_hash::Error),
+    #[error("Validation error failed to send.")]
+    ValidationEmailSendError(#[from] smtp::Error)
+}
+
 impl CreateAccountRequest {
-    async fn process_request(&self) -> Result<bool, argon2::password_hash::Error>{
+    async fn process_request(&self) -> Result<bool, AccountCreationError>{
         if password_valid(&self.password) {
             let hash = hash_password(&self.password)?;
-            let insert_fut = insert_user(self, hash);
+
+            insert_user(self, hash).await;
             if let Some(config) = &SERVER_CONFIG.email_config {
-                let email_fut = send_email_verification(&self.email, config);
-                let ( _, email_response ) = join!(insert_fut, email_fut);
-                if email_response.is_ok() {
-                    
-                } 
+                send_email_verification(&self.email, config).await?;
             } 
-            else 
-            {
-                insert_fut.await;
-            }
             return Ok(true); 
         }
         Ok(false)

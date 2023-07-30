@@ -17,10 +17,11 @@ refinery = { version = "0.8", features = ["mysql_async", "tiberius", "tokio-post
 tokio-postgres = { version = "0.7.8", features = ["with-chrono-0_4", "with-uuid-1"] }
 ring = "0.16.20"
 chrono = "0.4.24"
-argon2 = "0.5.0"
+argon2 = { version = "0.5.0", features = ["std"] }
 lazy_static = "1.4.0"
 tokio-rustls = { version = "0.24.1", features = ["logging", "tls12"] }
 rustls-pemfile = "1.0.2"
 env_logger = "0.10.0"
 log = { version = "0.4.19" }
 lettre = { version = "0.10.4", features = ["tokio1-rustls-tls", "tokio1-native-tls", "serde"]}
+thiserror = "1.0"
